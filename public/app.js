@@ -16,6 +16,15 @@ const show = (view) => {
 };
 const header = (eyebrow, title, description) => `<div class="eyebrow"><span class="eyebrow-line"></span>${eyebrow}</div><h1 tabindex="-1" class="view-title">${title}</h1><p class="intro">${description}</p>`;
 const note = (quiz) => `<div class="notice"><span class="info-dot" aria-hidden="true">i</span><span>${quiz.materialUsed ? 'Material fornecido usado como referência prioritária. ' : ''}Questões geradas para estudo. Explicações produzidas por IA; confira a legislação e o edital atualizados.${quiz.demo ? ' Modo demonstração: conteúdo fictício, sem valor jurídico.' : ''}</span></div>`;
+function addQuestionLevels(container, questions, selector) {
+  container.querySelectorAll(selector).forEach((meta, index) => {
+    if (!questions[index]?.difficulty) return;
+    const badge = document.createElement('span');
+    badge.className = 'question-level';
+    badge.textContent = questions[index].difficulty;
+    meta.append(badge);
+  });
+}
 
 async function loadHistory() {
   const container = $('#history-content');
@@ -40,6 +49,7 @@ function renderQuiz() {
   const quiz = state.quiz;
   const answered = Object.keys(state.answers).filter(id => state.answers[id]).length;
   $('#quiz-view').innerHTML = `${header('SIMULADO EM ANDAMENTO', escapeHtml(quiz.subject), `${quiz.questions.length} questões · Dificuldade ${escapeHtml(quiz.difficulty)}`)}${note(quiz)}<div class="progress-row"><strong>${answered} de ${quiz.questions.length} respondidas</strong><span>Revise antes de finalizar</span></div><div class="progress"><span style="width:${answered / quiz.questions.length * 100}%"></span></div><form id="quiz-form">${quiz.questions.map((q, i) => `<fieldset class="question-card" id="question-${i + 1}"><legend><span class="question-number">QUESTÃO ${String(i + 1).padStart(2, '0')}</span><span class="topic">${escapeHtml(q.topic)}</span></legend><h2>${escapeHtml(q.statement)}</h2><div class="options">${q.options.map(option => `<label class="option ${state.answers[q.id] === option.id ? 'selected' : ''}"><input type="radio" name="${escapeHtml(q.id)}" value="${option.id}" ${state.answers[q.id] === option.id ? 'checked' : ''}><span class="option-letter">${labels[option.id] || ''}</span><span>${escapeHtml(option.text)}</span></label>`).join('')}</div></fieldset>`).join('')}<div class="quiz-actions"><button type="button" class="button quiet" id="back-btn">← Voltar ao formulário</button><button type="submit" class="button primary">Finalizar simulado <span aria-hidden="true">↗</span></button></div><div id="quiz-error" class="alert" role="alert" hidden></div></form>`;
+  addQuestionLevels($('#quiz-view'), quiz.questions, '.question-card legend');
   show('quiz');
   $('#quiz-view h1').focus();
 }
@@ -47,6 +57,7 @@ function renderQuiz() {
 function renderResult() {
   const { quiz, result } = state;
   $('#result-view').innerHTML = `${header('SIMULADO FINALIZADO', 'Seu resultado.', escapeHtml(quiz.subject))}${note(quiz)}<div class="score-panel"><div><span class="score-label">PERCENTUAL DE ACERTO</span><strong class="score-number">${result.percent}<small>%</small></strong><span class="score-sub">${result.correct} de ${result.results.length} questões</span></div><div class="score-stats"><div><strong>${result.correct}</strong><span>Acertos</span></div><div><strong>${result.wrong}</strong><span>Erros${result.unanswered ? ' (inclui não respondidas)' : ''}</span></div><div><strong>${result.unanswered}</strong><span>Não respondidas</span></div></div></div><div class="review-heading"><div><span class="eyebrow">REVISÃO</span><h2>Confira questão por questão</h2></div><button class="button secondary" id="new-btn-top">Criar outro simulado</button></div>${result.results.map((q, i) => `<article class="question-card review ${q.isCorrect ? 'correct' : 'incorrect'}"><div class="question-meta"><span class="question-number">QUESTÃO ${String(i + 1).padStart(2, '0')}</span><span class="status ${q.isCorrect ? 'good' : 'bad'}">${!q.selected ? 'Não respondida' : q.isCorrect ? 'Correta' : 'Incorreta'}</span></div><h3>${escapeHtml(q.statement)}</h3><div class="options">${q.options.map(option => `<div class="option result-option ${option.id === q.correct ? 'is-answer' : ''} ${option.id === q.selected && !q.isCorrect ? 'is-wrong' : ''}"><span class="option-letter">${option.id}</span><span>${escapeHtml(option.text)}</span>${option.id === q.correct ? '<strong>Correta</strong>' : option.id === q.selected ? '<strong>Sua resposta</strong>' : ''}</div>`).join('')}</div><div class="explanation"><strong>Explicação</strong><p>${escapeHtml(q.explanation)}</p>${q.reference ? `<small>Referência no material fornecido: ${escapeHtml(q.reference)}</small>` : ''}${!q.selected ? '<small>Você deixou esta questão sem resposta.</small>' : ''}</div></article>`).join('')}<div class="end-actions"><button class="button primary" id="new-btn-bottom">Criar outro simulado <span aria-hidden="true">↗</span></button></div>`;
+  addQuestionLevels($('#result-view'), result.results, '.question-meta');
   show('result');
   $('#result-view h1').focus();
 }

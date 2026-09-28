@@ -1,6 +1,8 @@
 export const choices = ['A', 'B', 'C', 'D'];
 export const counts = [5, 10, 15, 20, 30, 40, 50];
-export const difficulties = ['básica', 'intermediária', 'avançada'];
+export const questionDifficulties = ['básica', 'intermediária', 'avançada'];
+export const difficulties = [...questionDifficulties, 'variada'];
+export const mixedDifficultyPlan = count => Array.from({ length: count }, (_, index) => questionDifficulties[index % questionDifficulties.length]);
 
 export function validateRequest(value) {
   const subject = typeof value?.subject === 'string' ? value.subject.trim() : '';
@@ -17,18 +19,19 @@ export function validateRequest(value) {
 const clean = (value) => typeof value === 'string' ? value.trim() : '';
 const comparable = (value) => clean(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\W+/g, ' ').trim();
 
-export function validateQuiz(value, count, hasMaterial) {
+export function validateQuiz(value, count, hasMaterial, expectedDifficulty) {
   if (!value || !Array.isArray(value.questions) || value.questions.length !== count) throw new Error('Quantidade de questões inválida.');
   const ids = new Set();
   const stems = new Set();
-  return value.questions.map((raw, index) => {
+  const questions = value.questions.map((raw, index) => {
     const id = clean(raw?.id);
     const statement = clean(raw?.statement);
     const explanation = clean(raw?.explanation);
     const topic = clean(raw?.topic);
+    const difficulty = clean(raw?.difficulty);
     const correct = raw?.correct;
     const reference = clean(raw?.reference);
-    if (!id || !statement || !explanation || !topic || !choices.includes(correct)) throw new Error('Questão incompleta.');
+    if (!id || !statement || !explanation || !topic || !questionDifficulties.includes(difficulty) || !choices.includes(correct)) throw new Error('Questão incompleta.');
     if (statement.length < 20 || statement.length > 1200 || explanation.length > 1600 || topic.length > 160 || reference.length > 300) throw new Error('Tamanho de campo inválido.');
     if (ids.has(id) || stems.has(comparable(statement))) throw new Error('Questões repetidas.');
     ids.add(id); stems.add(comparable(statement));
@@ -37,8 +40,17 @@ export function validateQuiz(value, count, hasMaterial) {
     if (options.some((option, i) => option.id !== choices[i] || !option.text || option.text.length > 500)) throw new Error('Alternativas incompletas.');
     if (new Set(options.map(option => comparable(option.text))).size !== 4) throw new Error('Alternativas repetidas.');
     // Sem consulta independente, referência só pode apontar o material recebido.
-    return { id, statement, options, correct, explanation, topic, reference: hasMaterial ? 'Material fornecido pelo estudante' : null, number: index + 1 };
+    return { id, statement, options, correct, explanation, topic, difficulty, reference: hasMaterial ? 'Material fornecido pelo estudante' : null, number: index + 1 };
   });
+  if (expectedDifficulty === 'variada') {
+    const plan = mixedDifficultyPlan(count);
+    for (const level of questionDifficulties) {
+      if (questions.filter(question => question.difficulty === level).length !== plan.filter(item => item === level).length) throw new Error('Distribuição de dificuldades inválida.');
+    }
+  } else if (expectedDifficulty && questions.some(question => question.difficulty !== expectedDifficulty)) {
+    throw new Error('Dificuldade da questão inválida.');
+  }
+  return questions;
 }
 
 export function grade(questions, answers) {

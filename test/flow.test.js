@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from '../server.js';
-import { generateMock, generateQuestions, generateGemini, ProviderError } from '../src/provider.js';
+import { generateMock, generateQuestions, generateGemini, makePrompt, ProviderError } from '../src/provider.js';
 import { validateQuiz } from '../src/validation.js';
 import { MemoryStore, SupabaseStore, StoreError } from '../src/store.js';
 
@@ -96,6 +96,24 @@ test('aceita 30, 40 e 50 questões e corrige um simulado de 50', async () => {
       }
     }
   });
+});
+
+test('modo variado distribui os três níveis e rejeita uma distribuição incorreta', async () => {
+  const input = { subject: 'Direito Penal', count: 10, difficulty: 'variada', material: '' };
+  assert.match(makePrompt(input), /4 questões de dificuldade básica, 3 questões de dificuldade intermediária, 3 questões de dificuldade avançada/);
+  await withServer(generateMock, async base => {
+    const response = await request(base, '/api/generate', input);
+    assert.equal(response.status, 200);
+    const quiz = await response.json();
+    assert.equal(quiz.difficulty, 'variada');
+    assert.deepEqual(quiz.questions.map(question => question.difficulty), ['básica', 'intermediária', 'avançada', 'básica', 'intermediária', 'avançada', 'básica', 'intermediária', 'avançada', 'básica']);
+    const submitted = await request(base, '/api/submit', { id: quiz.id, answers: { q1: 'A' } });
+    assert.equal(submitted.status, 200);
+    assert.equal((await submitted.json()).results[0].difficulty, 'básica');
+  });
+  const invalid = generateMock(input);
+  invalid.questions[0].difficulty = 'intermediária';
+  assert.throws(() => validateQuiz(invalid, 10, false, 'variada'), /Distribuição de dificuldades inválida/);
 });
 
 test('entrada inválida e ausência de chave mostram erros sem segredos', async () => {

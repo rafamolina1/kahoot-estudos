@@ -30,6 +30,7 @@ Depois de configurar as variáveis, faça um novo deploy. Não coloque chaves em
 ## Dados e limites
 
 - `simulations` guarda assunto, dificuldade, quantidade, questões, respostas e nota. O material colado **não** é salvo; apenas a indicação de que foi utilizado. O histórico lista simulados concluídos e permite rever as explicações.
+- A opção **Variada** distribui as questões de forma equilibrada entre os níveis básico, intermediário e avançado. O nível aparece em cada questão e a distribuição é conferida antes da entrega.
 - O gabarito e a chave do Supabase ficam no servidor. O navegador recebe o gabarito somente ao finalizar ou abrir uma revisão concluída.
 - A função `reserve_generation` do banco limita a três gerações por minuto por navegador e impede outra geração simultânea pelo mesmo navegador, inclusive entre instâncias da Vercel. Ela é chamada apenas pelo servidor.
 - O cookie de estudo é `HttpOnly`, `SameSite=Lax` e `Secure` em HTTPS. O banco recebe apenas o hash do identificador, sem o cookie original. Esta é uma separação por navegador, **não uma conta com sincronização entre dispositivos**. Para uso compartilhado entre dispositivos, será necessário adicionar autenticação futuramente.
