@@ -60,6 +60,12 @@ function newQuiz() {
   $('#subject').focus();
 }
 
+$('#home-link').addEventListener('click', (event) => {
+  event.preventDefault();
+  if ($('#setup').hidden) newQuiz();
+  else { window.scrollTo({ top: 0, behavior: 'smooth' }); $('#subject').focus(); }
+});
+
 $('#create-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const button = $('#generate-btn');
