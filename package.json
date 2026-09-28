@@ -1,0 +1,12 @@
+{
+  "name": "simulados-policiais",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.js",
+    "dev": "node --env-file-if-exists=.env --watch server.js",
+    "test": "node --test"
+  },
+  "engines": { "node": ">=20" }
+}

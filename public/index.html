@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#172d33">
+  <title>Simulados policiais</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar"><div class="topbar-inner"><div class="brand-lockup"><span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span><span class="brand">caderno<span class="brand-accent">.</span><small>SIMULADOS POLICIAIS</small></span></div><span class="topbar-note"><span class="live-dot" aria-hidden="true"></span> Área de estudo</span></div></header>
+  <main class="shell" id="main">
+    <section id="setup" aria-labelledby="setup-title">
+      <div class="setup-layout">
+        <aside class="setup-aside">
+          <div class="aside-top"><span class="aside-index">01 / 03</span><span class="aside-rule"></span></div>
+          <div class="eyebrow">SEU PRÓXIMO TREINO</div>
+          <h1 id="setup-title">Estude com<br><em>direção.</em></h1>
+          <p class="intro">Defina o tema, responda no seu ritmo e revise cada questão ao final.</p>
+          <div class="aside-steps" aria-label="Etapas do simulado"><div><span>01</span><strong>Preparar</strong><small>Escolha o foco do estudo</small></div><div><span>02</span><strong>Responder</strong><small>Marque suas alternativas</small></div><div><span>03</span><strong>Revisar</strong><small>Entenda cada resposta</small></div></div>
+          <p class="aside-bottom">Questões inéditas geradas para estudo.</p>
+        </aside>
+        <div class="setup-main">
+          <div class="form-overline"><span class="overline-square" aria-hidden="true"></span> NOVO SIMULADO <span class="overline-number">01</span></div>
+          <form id="create-form" class="panel">
+            <div class="panel-heading"><div><h2>Configure seu simulado</h2><p>Preencha os campos para começar.</p></div></div>
+            <div class="field"><label for="subject">Assunto <span class="required">*</span></label><input id="subject" name="subject" type="text" required minlength="3" maxlength="160" placeholder="Ex.: Direito Penal — crimes contra a pessoa" autocomplete="off"><small>Um recorte específico gera questões mais direcionadas.</small></div>
+            <div class="field-grid"><div class="field"><label for="count">Número de questões</label><select id="count" name="count"><option>5</option><option selected>10</option><option>15</option><option>20</option><option>30</option><option>40</option><option>50</option></select></div><div class="field"><label for="difficulty">Dificuldade</label><select id="difficulty" name="difficulty"><option value="básica">Básica</option><option value="intermediária" selected>Intermediária</option><option value="avançada">Avançada</option></select></div></div>
+            <div class="field material-field"><label for="material">Material de referência <span class="optional">opcional</span></label><textarea id="material" name="material" maxlength="12000" rows="4" placeholder="Cole um trecho de edital, lei ou material de estudo..."></textarea><small>Se preenchido, será a referência prioritária. Até 12.000 caracteres.</small></div>
+            <div class="form-footer"><p><span class="info-dot" aria-hidden="true">i</span> As explicações são geradas por IA. Confira a legislação e o edital atualizados.</p><button type="submit" id="generate-btn" class="button primary"><span>Gerar simulado</span><span class="button-arrow" aria-hidden="true">↗</span></button></div>
+          </form>
+          <div id="setup-error" class="alert" role="alert" hidden></div>
+        </div>
+      </div>
+      <section id="history-section" class="history-section" aria-labelledby="history-title">
+        <div class="history-heading"><div><span class="eyebrow">ACOMPANHAMENTO</span><h2 id="history-title">Seu histórico de estudo</h2><p>Até 500 simulados concluídos neste navegador.</p></div><span class="history-icon" aria-hidden="true">↗</span></div>
+        <div id="history-content" aria-live="polite"><p class="history-loading">Carregando histórico...</p></div>
+      </section>
+    </section>
+    <section id="quiz-view" hidden></section>
+    <section id="result-view" hidden></section>
+  </main>
+  <footer class="footer"><span>caderno<span class="brand-accent">.</span> <small>SIMULADOS POLICIAIS</small></span><span>Questões geradas para estudo · Confira as fontes atualizadas</span></footer>
+</body>
+</html>
