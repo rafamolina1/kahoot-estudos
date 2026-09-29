@@ -2,7 +2,7 @@ export class StoreError extends Error {
   constructor(code = 'failed') { super(code); this.code = code; }
 }
 
-const summaryFields = 'id,subject,difficulty,question_count,material_used,correct_count,wrong_count,unanswered_count,percent,created_at,completed_at';
+const summaryFields = 'id,subject,difficulty,question_count,source_simulation_id,material_used,correct_count,wrong_count,unanswered_count,percent,created_at,completed_at';
 
 export class SupabaseStore {
   constructor({ url = process.env.SUPABASE_URL, key = process.env.SUPABASE_SECRET_KEY, fetchImpl = fetch } = {}) {
@@ -45,6 +45,22 @@ export class SupabaseStore {
     return rows?.[0];
   }
 
+  async findOpenRetry(ownerHash, sourceId) {
+    const rows = await this.request(`simulations?owner_hash=eq.${ownerHash}&source_simulation_id=eq.${sourceId}&completed_at=is.null&select=*`);
+    return rows?.[0] || null;
+  }
+
+  async createRetry(record) {
+    const open = await this.findOpenRetry(record.owner_hash, record.source_simulation_id);
+    if (open) return open;
+    try { return await this.create(record); }
+    catch (error) {
+      const concurrent = await this.findOpenRetry(record.owner_hash, record.source_simulation_id);
+      if (concurrent) return concurrent;
+      throw error;
+    }
+  }
+
   async find(id, ownerHash) {
     const rows = await this.request(`simulations?id=eq.${id}&owner_hash=eq.${ownerHash}&select=*`);
     return rows?.[0] || null;
@@ -75,6 +91,10 @@ export class MemoryStore {
   }
   async release(id) { const event = this.events.find(item => item.id === id); if (event) event.finished = true; }
   async create(record) { const row = { ...record, created_at: new Date().toISOString(), completed_at: null }; this.simulations.set(row.id, row); return row; }
+  async createRetry(record) {
+    const open = [...this.simulations.values()].find(row => row.owner_hash === record.owner_hash && row.source_simulation_id === record.source_simulation_id && !row.completed_at);
+    return open || this.create(record);
+  }
   async find(id, ownerHash) { const row = this.simulations.get(id); return row?.owner_hash === ownerHash ? row : null; }
   async finish(id, ownerHash, update) { const row = await this.find(id, ownerHash); if (!row) return null; if (!row.completed_at) Object.assign(row, update); return row; }
   async history(ownerHash) { return [...this.simulations.values()].filter(row => row.owner_hash === ownerHash && row.completed_at).sort((a, b) => b.completed_at.localeCompare(a.completed_at)).slice(0, 500).map(({ questions, answers, owner_hash, ...summary }) => summary); }

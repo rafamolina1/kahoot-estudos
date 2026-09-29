@@ -10,6 +10,8 @@ Requer Node.js 20 ou superior. Não há dependências de runtime para instalar.
 2. Copie `.env.example` para `.env` e preencha `GEMINI_API_KEY`, `SUPABASE_URL` e `SUPABASE_SECRET_KEY`. Use a **secret key** do Supabase (`sb_secret_...`), mantida apenas no servidor. O endereço está em *Integrations → Data API* e a chave em *Settings → API Keys*.
 3. Execute `npm start` e abra `http://localhost:3000`. Para desenvolvimento com reinício automático, use `npm run dev`.
 
+Se o banco já foi criado antes da função **Refazer questões pendentes**, execute [`supabase/migrations/20260929_retry.sql`](supabase/migrations/20260929_retry.sql) uma vez no SQL Editor do Supabase. Ele preserva os simulados existentes, adiciona a ligação entre tentativas e permite revisões com menos de cinco questões. Para um projeto novo, basta executar o `schema.sql` atualizado.
+
 `GEMINI_MODEL` permite trocar o modelo; o padrão é `gemini-3.1-flash-lite`. `PORT` altera a porta local. Reinicie `npm start` após mudar `.env`.
 
 Para testar o fluxo sem chamadas externas, use `PROVIDER=mock npm start`. Sem credenciais Supabase, o servidor local mantém o histórico **temporariamente em memória**, mesmo com Gemini real; a interface sinaliza esse modo. Na Vercel, as credenciais Supabase são obrigatórias. As questões fictícias do modo `mock` são identificadas na interface. Execute `npm test` para os testes automatizados.
@@ -25,11 +27,12 @@ O projeto já inclui as funções em `api/` e [`vercel.json`](vercel.json). Impo
 | `SUPABASE_URL` | URL do projeto Supabase |
 | `SUPABASE_SECRET_KEY` | Secret key do Supabase |
 
-Depois de configurar as variáveis, faça um novo deploy. Não coloque chaves em variáveis com prefixo público nem em `public/`. A função de geração aceita até 300 segundos na configuração de Vercel; simulados de 50 questões podem levar mais tempo. Na faixa Hobby, esse tempo depende de Fluid Compute estar ativo.
+Depois de configurar as variáveis e aplicar a migração ao banco existente, faça um novo deploy. Não coloque chaves em variáveis com prefixo público nem em `public/`. A função de geração aceita até 300 segundos na configuração de Vercel; simulados de 50 questões podem levar mais tempo. Na faixa Hobby, esse tempo depende de Fluid Compute estar ativo.
 
 ## Dados e limites
 
 - `simulations` guarda assunto, dificuldade, quantidade, questões, respostas e nota. O material colado **não** é salvo; apenas a indicação de que foi utilizado. O histórico lista simulados concluídos e permite rever as explicações.
+- **Refazer questões pendentes** cria uma tentativa com as respostas erradas e não respondidas de um simulado concluído. Não chama o Gemini, mantém o gabarito oculto até a correção e preserva a tentativa original. Revisões aparecem no histórico, mas não entram nos três indicadores gerais.
 - A opção **Variada** distribui as questões de forma equilibrada entre os níveis básico, intermediário e avançado. O nível aparece em cada questão e a distribuição é conferida antes da entrega.
 - O gabarito e a chave do Supabase ficam no servidor. O navegador recebe o gabarito somente ao finalizar ou abrir uma revisão concluída.
 - A função `reserve_generation` do banco limita a três gerações por minuto por navegador e impede outra geração simultânea pelo mesmo navegador, inclusive entre instâncias da Vercel. Ela é chamada apenas pelo servidor.

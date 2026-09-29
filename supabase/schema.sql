@@ -3,7 +3,8 @@ create table if not exists public.simulations (
   owner_hash text not null check (length(owner_hash) = 64),
   subject text not null,
   difficulty text not null,
-  question_count integer not null check (question_count between 5 and 50),
+  question_count integer not null check (question_count between 1 and 50),
+  source_simulation_id uuid references public.simulations(id),
   material_used boolean not null default false,
   demo boolean not null default false,
   questions jsonb not null,
@@ -17,6 +18,8 @@ create table if not exists public.simulations (
 );
 
 create index if not exists simulations_owner_completed_idx on public.simulations (owner_hash, completed_at desc);
+create unique index if not exists simulations_open_retry_idx on public.simulations (owner_hash, source_simulation_id)
+  where source_simulation_id is not null and completed_at is null;
 
 create table if not exists public.generation_events (
   id bigint generated always as identity primary key,

@@ -38,10 +38,18 @@ async function loadHistory() {
       container.innerHTML = `${temporary}<div class="history-empty"><span aria-hidden="true">◇</span><p>Seu histórico começa após o primeiro simulado concluído.</p></div>`;
       return;
     }
-    const totalQuestions = items.reduce((sum, item) => sum + item.question_count, 0);
-    const totalCorrect = items.reduce((sum, item) => sum + item.correct_count, 0);
-    const overall = Math.round(totalCorrect / totalQuestions * 100);
-    container.innerHTML = `${temporary}<div class="history-stats"><div><strong>${items.length}</strong><span>Simulados exibidos</span></div><div><strong>${totalQuestions}</strong><span>Questões praticadas</span></div><div><strong>${overall}%</strong><span>Aproveitamento exibido</span></div></div><div class="history-list">${items.map(item => `<article class="history-item"><div class="history-date">${escapeHtml(new Date(item.completed_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' }))}</div><div class="history-subject"><strong>${escapeHtml(item.subject)}</strong><small>${item.question_count} questões · ${escapeHtml(item.difficulty)}${item.material_used ? ' · com material' : ''}</small></div><div class="history-score"><strong>${item.correct_count}/${item.question_count}</strong><span>${item.percent}% de acerto</span></div><button type="button" class="history-review" data-review-id="${escapeHtml(item.id)}" aria-label="Rever simulado sobre ${escapeHtml(item.subject)}">Rever <span aria-hidden="true">↗</span></button></article>`).join('')}</div>`;
+    const originals = items.filter(item => !item.source_simulation_id);
+    const totalQuestions = originals.reduce((sum, item) => sum + item.question_count, 0);
+    const totalCorrect = originals.reduce((sum, item) => sum + item.correct_count, 0);
+    const overall = totalQuestions ? Math.round(totalCorrect / totalQuestions * 100) : 0;
+    container.innerHTML = `${temporary}
+      <div class="history-stats"><div><strong>${originals.length}</strong><span>Simulados exibidos</span></div><div><strong>${totalQuestions}</strong><span>Questões praticadas</span></div><div><strong>${overall}%</strong><span>Aproveitamento exibido</span></div></div>
+      <div class="history-list">${items.map(item => `<article class="history-item">
+        <div class="history-date">${escapeHtml(new Date(item.completed_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' }))}</div>
+        <div class="history-subject"><strong>${escapeHtml(item.subject)}</strong><small>${item.source_simulation_id ? 'Revisão de pendências · ' : ''}${item.question_count} questões · ${escapeHtml(item.difficulty)}${item.material_used ? ' · com material' : ''}</small></div>
+        <div class="history-score"><strong>${item.correct_count}/${item.question_count}</strong><span>${item.percent}% de acerto</span></div>
+        <div class="history-actions"><button type="button" class="history-review" data-review-id="${escapeHtml(item.id)}" aria-label="Rever simulado sobre ${escapeHtml(item.subject)}">Rever <span aria-hidden="true">↗</span></button>${item.wrong_count ? `<button type="button" class="history-review history-retry" data-retry-id="${escapeHtml(item.id)}" aria-label="Refazer ${item.wrong_count} questões pendentes sobre ${escapeHtml(item.subject)}">Refazer ${item.wrong_count}</button>` : ''}</div>
+      </article>`).join('')}</div>`;
   } catch (error) { container.innerHTML = `<div class="history-empty"><p>${escapeHtml(error.message || 'Não foi possível carregar o histórico.')}</p><button type="button" id="history-retry" class="button secondary">Tentar novamente</button></div>`; }
 }
 
@@ -50,6 +58,7 @@ function renderQuiz() {
   const answered = Object.keys(state.answers).filter(id => state.answers[id]).length;
   $('#quiz-view').innerHTML = `${header('SIMULADO EM ANDAMENTO', escapeHtml(quiz.subject), `${quiz.questions.length} questões · Dificuldade ${escapeHtml(quiz.difficulty)}`)}${note(quiz)}<div class="progress-row"><strong>${answered} de ${quiz.questions.length} respondidas</strong><span>Revise antes de finalizar</span></div><div class="progress"><span style="width:${answered / quiz.questions.length * 100}%"></span></div><form id="quiz-form">${quiz.questions.map((q, i) => `<fieldset class="question-card" id="question-${i + 1}"><legend><span class="question-number">QUESTÃO ${String(i + 1).padStart(2, '0')}</span><span class="topic">${escapeHtml(q.topic)}</span></legend><h2>${escapeHtml(q.statement)}</h2><div class="options">${q.options.map(option => `<label class="option ${state.answers[q.id] === option.id ? 'selected' : ''}"><input type="radio" name="${escapeHtml(q.id)}" value="${option.id}" ${state.answers[q.id] === option.id ? 'checked' : ''}><span class="option-letter">${labels[option.id] || ''}</span><span>${escapeHtml(option.text)}</span></label>`).join('')}</div></fieldset>`).join('')}<div class="quiz-actions"><button type="button" class="button quiet" id="back-btn">← Voltar ao formulário</button><button type="submit" class="button primary">Finalizar simulado <span aria-hidden="true">↗</span></button></div><div id="quiz-error" class="alert" role="alert" hidden></div></form>`;
   addQuestionLevels($('#quiz-view'), quiz.questions, '.question-card legend');
+  if (quiz.sourceSimulationId) $('#quiz-view .eyebrow').textContent = 'REVISÃO DE PENDÊNCIAS';
   show('quiz');
   $('#quiz-view h1').focus();
 }
@@ -58,6 +67,22 @@ function renderResult() {
   const { quiz, result } = state;
   $('#result-view').innerHTML = `${header('SIMULADO FINALIZADO', 'Seu resultado.', escapeHtml(quiz.subject))}${note(quiz)}<div class="score-panel"><div><span class="score-label">PERCENTUAL DE ACERTO</span><strong class="score-number">${result.percent}<small>%</small></strong><span class="score-sub">${result.correct} de ${result.results.length} questões</span></div><div class="score-stats"><div><strong>${result.correct}</strong><span>Acertos</span></div><div><strong>${result.wrong}</strong><span>Erros${result.unanswered ? ' (inclui não respondidas)' : ''}</span></div><div><strong>${result.unanswered}</strong><span>Não respondidas</span></div></div></div><div class="review-heading"><div><span class="eyebrow">REVISÃO</span><h2>Confira questão por questão</h2></div><button class="button secondary" id="new-btn-top">Criar outro simulado</button></div>${result.results.map((q, i) => `<article class="question-card review ${q.isCorrect ? 'correct' : 'incorrect'}"><div class="question-meta"><span class="question-number">QUESTÃO ${String(i + 1).padStart(2, '0')}</span><span class="status ${q.isCorrect ? 'good' : 'bad'}">${!q.selected ? 'Não respondida' : q.isCorrect ? 'Correta' : 'Incorreta'}</span></div><h3>${escapeHtml(q.statement)}</h3><div class="options">${q.options.map(option => `<div class="option result-option ${option.id === q.correct ? 'is-answer' : ''} ${option.id === q.selected && !q.isCorrect ? 'is-wrong' : ''}"><span class="option-letter">${option.id}</span><span>${escapeHtml(option.text)}</span>${option.id === q.correct ? '<strong>Correta</strong>' : option.id === q.selected ? '<strong>Sua resposta</strong>' : ''}</div>`).join('')}</div><div class="explanation"><strong>Explicação</strong><p>${escapeHtml(q.explanation)}</p>${q.reference ? `<small>Referência no material fornecido: ${escapeHtml(q.reference)}</small>` : ''}${!q.selected ? '<small>Você deixou esta questão sem resposta.</small>' : ''}</div></article>`).join('')}<div class="end-actions"><button class="button primary" id="new-btn-bottom">Criar outro simulado <span aria-hidden="true">↗</span></button></div>`;
   addQuestionLevels($('#result-view'), result.results, '.question-meta');
+  if (quiz.sourceSimulationId) {
+    $('#result-view .eyebrow').textContent = 'REVISÃO CONCLUÍDA';
+    $('#result-view .intro').textContent = `Revisão de pendências · ${quiz.subject}`;
+  }
+  if (result.wrong) {
+    const label = `Refazer ${result.wrong} ${result.wrong === 1 ? 'questão pendente' : 'questões pendentes'}`;
+    for (const selector of ['.review-heading', '.end-actions']) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'button primary';
+      button.dataset.retryId = quiz.id;
+      button.textContent = label;
+      $('#result-view').querySelector(selector).append(button);
+    }
+    $('#result-view .score-panel').insertAdjacentHTML('afterend', '<div id="result-retry-error" class="alert" role="alert" hidden></div>');
+  }
   show('result');
   $('#result-view h1').focus();
 }
@@ -69,6 +94,32 @@ function newQuiz() {
   show('setup');
   loadHistory();
   $('#subject').focus();
+}
+
+let retryBusy = false;
+async function startRetry(id, fromHistory) {
+  if (retryBusy) return;
+  retryBusy = true;
+  const buttons = document.querySelectorAll(`[data-retry-id="${id}"]`);
+  buttons.forEach(button => { button.disabled = true; });
+  const error = fromHistory ? $('#history-action-error') : $('#result-retry-error');
+  if (error) error.hidden = true;
+  try {
+    const response = await fetch('/api/retry', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'Não foi possível iniciar a revisão.');
+    state = { quiz: data, answers: {}, result: null };
+    save(); renderQuiz();
+  } catch (cause) {
+    if (error) {
+      error.textContent = cause instanceof TypeError ? 'Falha de conexão. Tente novamente.' : cause.message;
+      error.hidden = false;
+      error.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+  } finally {
+    retryBusy = false;
+    buttons.forEach(button => { button.disabled = false; });
+  }
 }
 
 $('#home-link').addEventListener('click', (event) => {
@@ -124,9 +175,15 @@ $('#quiz-view').addEventListener('submit', async (event) => {
   } catch (cause) { error.textContent = cause instanceof TypeError ? 'Falha de conexão. Tente finalizar novamente.' : cause.message; error.hidden = false; }
   finally { button.disabled = false; button.textContent = 'Finalizar simulado ↗'; }
 });
-$('#result-view').addEventListener('click', event => { if (event.target.closest('#new-btn-top, #new-btn-bottom')) newQuiz(); });
+$('#result-view').addEventListener('click', event => {
+  const retry = event.target.closest('[data-retry-id]');
+  if (retry) return startRetry(retry.dataset.retryId, false);
+  if (event.target.closest('#new-btn-top, #new-btn-bottom')) newQuiz();
+});
 $('#history-section').addEventListener('click', async event => {
   if (event.target.closest('#history-retry')) return loadHistory();
+  const retry = event.target.closest('[data-retry-id]');
+  if (retry) return startRetry(retry.dataset.retryId, true);
   const button = event.target.closest('[data-review-id]');
   if (!button || button.disabled) return;
   button.disabled = true;

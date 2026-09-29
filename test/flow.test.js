@@ -60,6 +60,54 @@ test('gera 10 questões, oculta gabarito, corrige escolhas e não respondidas', 
   });
 });
 
+test('refaz erros e não respondidas sem chamar o provedor e preserva o simulado original', async () => {
+  let providerCalls = 0;
+  await withServer(input => { providerCalls++; return generateMock(input); }, async base => {
+    const source = await (await request(base, '/api/generate', { subject: 'Direito Penal', count: 5, difficulty: 'intermediária', material: '' })).json();
+    const unfinished = await request(base, '/api/retry', { id: source.id });
+    assert.equal(unfinished.status, 409);
+    await request(base, '/api/submit', { id: source.id, answers: { q1: 'A', q2: 'A' } });
+
+    const retryResponse = await request(base, '/api/retry', { id: source.id });
+    assert.equal(retryResponse.status, 200);
+    const retry = await retryResponse.json();
+    assert.equal(retry.sourceSimulationId, source.id);
+    assert.deepEqual(retry.questions.map(question => question.id), ['q2', 'q3', 'q4', 'q5']);
+    assert.ok(retry.questions.every(question => !('correct' in question) && !('explanation' in question)));
+    assert.equal(providerCalls, 1);
+    assert.equal((await (await request(base, '/api/retry', { id: source.id })).json()).id, retry.id);
+
+    const corrected = await (await request(base, '/api/submit', { id: retry.id, answers: { q2: 'B' } })).json();
+    assert.equal(corrected.correct, 1);
+    assert.equal(corrected.unanswered, 3);
+    const finalRetry = await (await request(base, '/api/retry', { id: retry.id })).json();
+    assert.equal(finalRetry.questions.length, 3);
+    const allCorrect = await (await request(base, '/api/submit', { id: finalRetry.id, answers: { q3: 'C', q4: 'D', q5: 'A' } })).json();
+    assert.equal(allCorrect.percent, 100);
+    assert.equal((await request(base, '/api/retry', { id: finalRetry.id })).status, 409);
+    assert.equal(providerCalls, 1);
+
+    const history = (await (await request(base, '/api/history')).json()).items;
+    assert.equal(history.length, 3);
+    assert.equal(history.find(item => item.id === source.id).correct_count, 1);
+    assert.equal(history.find(item => item.id === retry.id).source_simulation_id, source.id);
+    assert.equal(history.find(item => item.id === finalRetry.id).source_simulation_id, retry.id);
+    assert.equal((await request(base, '/api/retry', { id: source.id }, { noCookie: true })).status, 404);
+  });
+});
+
+test('permite refazer uma única questão errada', async () => {
+  await withServer(generateMock, async base => {
+    const source = await (await request(base, '/api/generate', { subject: 'Direito Penal', count: 5, difficulty: 'básica', material: '' })).json();
+    await request(base, '/api/submit', { id: source.id, answers: { q1: 'B', q2: 'B', q3: 'C', q4: 'D', q5: 'A' } });
+    const retry = await (await request(base, '/api/retry', { id: source.id })).json();
+    assert.equal(retry.questions.length, 1);
+    assert.equal(retry.questions[0].id, 'q1');
+    const corrected = await (await request(base, '/api/submit', { id: retry.id, answers: { q1: 'A' } })).json();
+    assert.equal(corrected.percent, 100);
+  });
+});
+
 test('tentativa continua após recriar o servidor com o mesmo armazenamento', async () => {
   const store = new MemoryStore();
   let quiz;
@@ -199,4 +247,21 @@ test('Supabase usa secret key somente no servidor e falha claramente sem configu
   assert.equal(calls[0].options.headers.apikey, 'sb_secret_teste');
   assert.equal(calls[0].options.headers.Authorization, undefined);
   await assert.rejects(new SupabaseStore({ url: '', key: '' }).history('a'.repeat(64)), error => error instanceof StoreError && error.code === 'missing_config');
+});
+
+test('Supabase reaproveita uma revisão aberta sem inserir outra linha', async () => {
+  const record = { id: '12345678-1234-1234-1234-123456789abc', owner_hash: 'a'.repeat(64), source_simulation_id: '87654321-4321-4321-4321-cba987654321' };
+  let saved = null;
+  let inserts = 0;
+  const store = new SupabaseStore({
+    url: 'https://projeto.supabase.co', key: 'sb_secret_teste',
+    fetchImpl: async (url, options) => {
+      if (options.method === 'POST') { inserts++; saved = record; }
+      else assert.match(url, /source_simulation_id=eq\./);
+      return { ok: true, status: 200, json: async () => saved ? [saved] : [] };
+    }
+  });
+  assert.equal((await store.createRetry(record)).id, record.id);
+  assert.equal((await store.createRetry(record)).id, record.id);
+  assert.equal(inserts, 1);
 });

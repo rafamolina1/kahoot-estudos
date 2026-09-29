@@ -13,7 +13,7 @@ export function createServer({ provider, store = !process.env.SUPABASE_URL || !p
   const api = createApi({ provider, store });
   return http.createServer(async (req, res) => {
     const pathname = new URL(req.url, 'http://localhost').pathname;
-    const route = pathname.match(/^\/api\/(generate|submit|history|review)$/)?.[1];
+    const route = pathname.match(/^\/api\/(generate|retry|submit|history|review)$/)?.[1];
     if (route) return api(req, res, route);
     if (req.method !== 'GET') return send(res, 405, { error: 'Método não permitido.' });
     const filename = files[pathname];

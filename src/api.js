@@ -47,6 +47,7 @@ function owner(req, res) {
 const publicQuiz = row => ({
   id: row.id, subject: row.subject, difficulty: row.difficulty,
   materialUsed: row.material_used, demo: row.demo,
+  sourceSimulationId: row.source_simulation_id || null,
   questions: row.questions.map(({ correct, explanation, reference, ...question }) => question)
 });
 
@@ -54,7 +55,7 @@ function errorResponse(res, error) {
   if (error instanceof ProviderError) {
     return send(res, error.code === 'quota' ? 429 : error.code === 'missing_key' ? 503 : 502, { error: messages[error.code] || messages.provider });
   }
-  if (error instanceof StoreError) return send(res, 503, { error: messages[error.code] || messages.failed });
+  if (error instanceof StoreError) return send(res, 503, { error: error.code === 'missing_config' ? messages.missing_config : messages.failed });
   return send(res, 500, { error: 'Ocorreu um erro inesperado. Tente novamente.' });
 }
 
@@ -78,6 +79,23 @@ export function createApi({ store = new SupabaseStore(), provider } = {}) {
           });
           return send(res, 200, publicQuiz(row));
         } finally { try { await store.release(reservation); } catch { /* A reserva expira no banco. */ } }
+      }
+      if (route === 'retry' && req.method === 'POST') {
+        let value;
+        try { value = await readBody(req); } catch { return send(res, 400, { error: 'Dados inválidos.' }); }
+        if (!/^[a-f0-9-]{36}$/.test(value?.id || '')) return send(res, 400, { error: 'Simulado inválido.' });
+        const source = await store.find(value.id, ownerHash);
+        if (!source) return send(res, 404, { error: 'Simulado não encontrado neste navegador.' });
+        if (!source.completed_at) return send(res, 409, { error: 'Finalize o simulado antes de refazer as questões pendentes.' });
+        const questions = source.questions.filter(question => source.answers?.[question.id] !== question.correct).map(question => structuredClone(question));
+        if (!questions.length) return send(res, 409, { error: 'Todas as questões deste simulado já foram acertadas.' });
+        const row = await store.createRetry({
+          id: randomUUID(), owner_hash: ownerHash, source_simulation_id: source.id,
+          subject: source.subject, difficulty: source.difficulty,
+          question_count: questions.length, material_used: source.material_used,
+          demo: source.demo, questions
+        });
+        return send(res, 200, publicQuiz(row));
       }
       if (route === 'submit' && req.method === 'POST') {
         let value;
