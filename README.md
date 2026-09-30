@@ -12,6 +12,10 @@ Requer Node.js 20 ou superior. Não há dependências de runtime para instalar.
 
 Se o banco já foi criado antes da função **Refazer questões pendentes**, execute [`supabase/migrations/20260929_retry.sql`](supabase/migrations/20260929_retry.sql) uma vez no SQL Editor do Supabase. Ele preserva os simulados existentes, adiciona a ligação entre tentativas e permite revisões com menos de cinco questões. Para um projeto novo, basta executar o `schema.sql` atualizado.
 
+Para adicionar o **Caderno de erros** e a exclusão de simulados em um banco já existente, execute também [`supabase/migrations/20260930_caderno_erros.sql`](supabase/migrations/20260930_caderno_erros.sql). Essa migração permite que a exclusão de um simulado apague suas revisões vinculadas. Não execute o esquema inicial novamente em um banco existente.
+
+Para guardar **anotações por questão** em um banco já existente, execute [`supabase/migrations/20260930_anotacoes.sql`](supabase/migrations/20260930_anotacoes.sql) no SQL Editor. Em um projeto novo, a coluna já faz parte do `schema.sql`.
+
 `GEMINI_MODEL` permite trocar o modelo; o padrão é `gemini-3.1-flash-lite`. `PORT` altera a porta local. Reinicie `npm start` após mudar `.env`.
 
 Para testar o fluxo sem chamadas externas, use `PROVIDER=mock npm start`. Sem credenciais Supabase, o servidor local mantém o histórico **temporariamente em memória**, mesmo com Gemini real; a interface sinaliza esse modo. Na Vercel, as credenciais Supabase são obrigatórias. As questões fictícias do modo `mock` são identificadas na interface. Execute `npm test` para os testes automatizados.
@@ -31,8 +35,10 @@ Depois de configurar as variáveis e aplicar a migração ao banco existente, fa
 
 ## Dados e limites
 
-- `simulations` guarda assunto, dificuldade, quantidade, questões, respostas e nota. O material colado **não** é salvo; apenas a indicação de que foi utilizado. O histórico lista simulados concluídos e permite rever as explicações.
+- `simulations` guarda assunto, dificuldade, quantidade, questões, respostas, anotações e nota. O material colado **não** é salvo; apenas a indicação de que foi utilizado. O histórico lista simulados concluídos e permite rever as explicações.
+- A interface prioriza o uso em computador: cada questão mostra alternativas e anotações lado a lado. Durante a tentativa, o texto fica no navegador e é enviado ao servidor ao finalizar; na revisão, alterações podem ser salvas por questão. Anotações de questões pendentes acompanham o **Caderno de erros**. Elas não são enviadas ao Gemini.
 - **Refazer questões pendentes** cria uma tentativa com as respostas erradas e não respondidas de um simulado concluído. Não chama o Gemini, mantém o gabarito oculto até a correção e preserva a tentativa original. Revisões aparecem no histórico, mas não entram nos três indicadores gerais.
+- O histórico agrupa as revisões no **Caderno de erros** do simulado original. É possível apagar uma tentativa em andamento, uma revisão ou o simulado original, sempre com confirmação. Apagar uma revisão remove também as revisões derivadas; apagar o original remove todo o seu caderno de erros. A exclusão é definitiva e só alcança dados do navegador atual.
 - A opção **Variada** distribui as questões de forma equilibrada entre os níveis básico, intermediário e avançado. O nível aparece em cada questão e a distribuição é conferida antes da entrega.
 - O gabarito e a chave do Supabase ficam no servidor. O navegador recebe o gabarito somente ao finalizar ou abrir uma revisão concluída.
 - A função `reserve_generation` do banco limita a três gerações por minuto por navegador e impede outra geração simultânea pelo mesmo navegador, inclusive entre instâncias da Vercel. Ela é chamada apenas pelo servidor.

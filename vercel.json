@@ -6,6 +6,7 @@
   "functions": {
     "api/generate.js": { "maxDuration": 300 },
     "api/retry.js": { "maxDuration": 30 },
+    "api/simulation.js": { "maxDuration": 30 },
     "api/submit.js": { "maxDuration": 30 },
     "api/history.js": { "maxDuration": 30 },
     "api/review.js": { "maxDuration": 30 }

@@ -4,11 +4,12 @@ create table if not exists public.simulations (
   subject text not null,
   difficulty text not null,
   question_count integer not null check (question_count between 1 and 50),
-  source_simulation_id uuid references public.simulations(id),
+  source_simulation_id uuid references public.simulations(id) on delete cascade,
   material_used boolean not null default false,
   demo boolean not null default false,
   questions jsonb not null,
   answers jsonb,
+  notes jsonb not null default '{}'::jsonb,
   correct_count integer,
   wrong_count integer,
   unanswered_count integer,
@@ -20,6 +21,8 @@ create table if not exists public.simulations (
 create index if not exists simulations_owner_completed_idx on public.simulations (owner_hash, completed_at desc);
 create unique index if not exists simulations_open_retry_idx on public.simulations (owner_hash, source_simulation_id)
   where source_simulation_id is not null and completed_at is null;
+create index if not exists simulations_source_idx on public.simulations (source_simulation_id)
+  where source_simulation_id is not null;
 
 create table if not exists public.generation_events (
   id bigint generated always as identity primary key,

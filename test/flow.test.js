@@ -15,9 +15,10 @@ async function withServer(provider, run, store = new MemoryStore()) {
   finally { await new Promise(resolve => server.close(resolve)); }
 }
 
-async function request(base, endpoint, value, { noCookie = false } = {}) {
+async function request(base, endpoint, value, { noCookie = false, method } = {}) {
+  const requestMethod = method || (value === undefined ? 'GET' : 'POST');
   const response = await fetch(`${base}${endpoint}`, {
-    method: value === undefined ? 'GET' : 'POST',
+    method: requestMethod,
     headers: { ...(value === undefined ? {} : { 'Content-Type': 'application/json' }), ...(noCookie || !cookies.get(base) ? {} : { Cookie: cookies.get(base) }) },
     ...(value === undefined ? {} : { body: JSON.stringify(value) })
   });
@@ -57,6 +58,75 @@ test('gera 10 questões, oculta gabarito, corrige escolhas e não respondidas', 
     assert.ok(review.quiz.questions.every(question => !('correct' in question)));
     const otherBrowser = await request(base, `/api/review?id=${quiz.id}`, undefined, { noCookie: true });
     assert.equal(otherBrowser.status, 404);
+  });
+});
+
+test('anotações são validadas, persistidas na revisão e levadas às questões pendentes', async () => {
+  await withServer(generateMock, async base => {
+    const source = await (await request(base, '/api/generate', { subject: 'Direito Penal', count: 5, difficulty: 'intermediária', material: '' })).json();
+    assert.deepEqual(source.notes, {});
+    assert.equal((await request(base, '/api/simulation', { id: source.id, questionId: 'q1', text: 'Antes de concluir' }, { method: 'PATCH' })).status, 404);
+    assert.equal((await request(base, '/api/submit', { id: source.id, answers: {}, notes: { q1: 'x'.repeat(1001) } })).status, 400);
+    assert.equal((await request(base, '/api/submit', { id: source.id, answers: {}, notes: { outra: 'texto' } })).status, 400);
+    assert.equal((await request(base, '/api/submit', { id: source.id, answers: { q1: 'A' }, notes: { q1: 'Acertada', q2: 'Preciso rever', q3: 'Conteúdo X ajuda' } })).status, 200);
+
+    const review = await (await request(base, `/api/review?id=${source.id}`)).json();
+    assert.deepEqual(review.quiz.notes, { q1: 'Acertada', q2: 'Preciso rever', q3: 'Conteúdo X ajuda' });
+    assert.equal((await request(base, '/api/simulation', { id: source.id, questionId: 'q2', text: 'Outro navegador' }, { method: 'PATCH', noCookie: true })).status, 404);
+    assert.equal((await request(base, '/api/simulation', { id: source.id, questionId: 'q2', text: 'x'.repeat(1001) }, { method: 'PATCH' })).status, 400);
+    const edited = await request(base, '/api/simulation', { id: source.id, questionId: 'q2', text: '  Rever com o edital  ' }, { method: 'PATCH' });
+    assert.equal(edited.status, 200);
+    assert.equal((await edited.json()).notes.q2, 'Rever com o edital');
+
+    const retry = await (await request(base, '/api/retry', { id: source.id })).json();
+    assert.deepEqual(retry.notes, { q2: 'Rever com o edital', q3: 'Conteúdo X ajuda' });
+    assert.ok(!('q1' in retry.notes));
+    assert.equal((await request(base, '/api/submit', { id: retry.id, answers: {}, notes: retry.notes })).status, 200);
+    const retryReview = await (await request(base, `/api/review?id=${retry.id}`)).json();
+    assert.deepEqual(retryReview.quiz.notes, retry.notes);
+  });
+});
+
+test('exclusão apaga o simulado e seu caderno, mas mantém outros simulados', async () => {
+  await withServer(generateMock, async base => {
+    const input = { subject: 'Direito Penal', count: 5, difficulty: 'básica', material: '' };
+    const source = await (await request(base, '/api/generate', input)).json();
+    await request(base, '/api/submit', { id: source.id, answers: { q1: 'A' } });
+    const retry = await (await request(base, '/api/retry', { id: source.id })).json();
+    await request(base, '/api/submit', { id: retry.id, answers: { q2: 'B' } });
+    const nestedRetry = await (await request(base, '/api/retry', { id: retry.id })).json();
+    await request(base, '/api/submit', { id: nestedRetry.id, answers: {} });
+    const other = await (await request(base, '/api/generate', input)).json();
+    await request(base, '/api/submit', { id: other.id, answers: {} });
+
+    assert.equal((await request(base, `/api/simulation?id=${source.id}`, undefined, { noCookie: true, method: 'DELETE' })).status, 404);
+    const deletion = await request(base, `/api/simulation?id=${source.id}`, undefined, { method: 'DELETE' });
+    assert.equal(deletion.status, 200);
+    assert.equal((await deletion.json()).deleted, true);
+    assert.equal((await request(base, `/api/review?id=${retry.id}`)).status, 404);
+    assert.equal((await request(base, `/api/review?id=${nestedRetry.id}`)).status, 404);
+    const history = (await (await request(base, '/api/history')).json()).items;
+    assert.deepEqual(history.map(item => item.id), [other.id]);
+  });
+});
+
+test('exclusão de revisão preserva o original e exclusão de tentativa aberta impede envio', async () => {
+  await withServer(generateMock, async base => {
+    const input = { subject: 'Direito Penal', count: 5, difficulty: 'básica', material: '' };
+    const source = await (await request(base, '/api/generate', input)).json();
+    await request(base, '/api/submit', { id: source.id, answers: {} });
+    const retry = await (await request(base, '/api/retry', { id: source.id })).json();
+    await request(base, '/api/submit', { id: retry.id, answers: {} });
+    const nestedRetry = await (await request(base, '/api/retry', { id: retry.id })).json();
+    assert.equal((await request(base, `/api/simulation?id=${retry.id}`, undefined, { method: 'DELETE' })).status, 200);
+    assert.equal((await request(base, `/api/review?id=${source.id}`)).status, 200);
+    assert.equal((await request(base, '/api/submit', { id: nestedRetry.id, answers: {} })).status, 410);
+
+    const open = await (await request(base, '/api/generate', input)).json();
+    assert.equal((await request(base, `/api/simulation?id=${open.id}`, undefined, { method: 'DELETE' })).status, 200);
+    assert.equal((await request(base, '/api/submit', { id: open.id, answers: {} })).status, 410);
+    assert.equal((await request(base, '/api/simulation?id=inválido', undefined, { method: 'DELETE' })).status, 400);
+    assert.deepEqual((await (await request(base, '/api/history')).json()).items.map(item => item.id), [source.id]);
   });
 });
 
@@ -135,12 +205,15 @@ test('aceita 30, 40 e 50 questões e corrige um simulado de 50', async () => {
       assert.equal(quiz.questions.length, count);
       if (count === 50) {
         const answers = Object.fromEntries(quiz.questions.map((question, index) => [question.id, 'ABCD'[index % 4]]));
-        const submitted = await request(base, '/api/submit', { id: quiz.id, answers });
+        const notes = Object.fromEntries(quiz.questions.map(question => [question.id, 'N'.repeat(1000)]));
+        const submitted = await request(base, '/api/submit', { id: quiz.id, answers, notes });
         assert.equal(submitted.status, 200);
         const result = await submitted.json();
         assert.equal(result.correct, 50);
         assert.equal(result.percent, 100);
         assert.equal(result.results.length, 50);
+        const review = await (await request(base, `/api/review?id=${quiz.id}`)).json();
+        assert.equal(Object.keys(review.quiz.notes).length, 50);
       }
     }
   });
@@ -264,4 +337,34 @@ test('Supabase reaproveita uma revisão aberta sem inserir outra linha', async (
   assert.equal((await store.createRetry(record)).id, record.id);
   assert.equal((await store.createRetry(record)).id, record.id);
   assert.equal(inserts, 1);
+});
+
+test('Supabase remove apenas o ID e proprietário informados', async () => {
+  let deletedUrl;
+  const store = new SupabaseStore({
+    url: 'https://projeto.supabase.co', key: 'sb_secret_teste',
+    fetchImpl: async (url, options) => {
+      assert.equal(options.method, 'DELETE');
+      assert.equal(options.headers.Prefer, 'return=representation');
+      deletedUrl = url;
+      return { ok: true, status: 200, json: async () => [{ id: 'simulado' }] };
+    }
+  });
+  assert.equal(await store.remove('simulado', 'a'.repeat(64)), true);
+  assert.match(deletedUrl, /id=eq\.simulado&owner_hash=eq\.a{64}&select=id$/);
+});
+
+test('Supabase atualiza anotações apenas no simulado concluído do proprietário', async () => {
+  let updatedUrl;
+  const store = new SupabaseStore({
+    url: 'https://projeto.supabase.co', key: 'sb_secret_teste',
+    fetchImpl: async (url, options) => {
+      assert.equal(options.method, 'PATCH');
+      assert.deepEqual(JSON.parse(options.body), { notes: { q2: 'Rever o edital' } });
+      updatedUrl = url;
+      return { ok: true, status: 200, json: async () => [{ id: 'simulado', notes: { q2: 'Rever o edital' } }] };
+    }
+  });
+  assert.deepEqual((await store.updateNotes('simulado', 'a'.repeat(64), { q2: 'Rever o edital' })).notes, { q2: 'Rever o edital' });
+  assert.match(updatedUrl, /id=eq\.simulado&owner_hash=eq\.a{64}&completed_at=not\.is\.null&select=id,notes$/);
 });

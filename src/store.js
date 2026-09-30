@@ -66,11 +66,25 @@ export class SupabaseStore {
     return rows?.[0] || null;
   }
 
+  async remove(id, ownerHash) {
+    const rows = await this.request(`simulations?id=eq.${id}&owner_hash=eq.${ownerHash}&select=id`, {
+      method: 'DELETE', prefer: 'return=representation'
+    });
+    return rows?.length === 1;
+  }
+
   async finish(id, ownerHash, update) {
     const rows = await this.request(`simulations?id=eq.${id}&owner_hash=eq.${ownerHash}&completed_at=is.null&select=*`, {
       method: 'PATCH', body: update, prefer: 'return=representation'
     });
     return rows?.[0] || this.find(id, ownerHash);
+  }
+
+  async updateNotes(id, ownerHash, notes) {
+    const rows = await this.request(`simulations?id=eq.${id}&owner_hash=eq.${ownerHash}&completed_at=not.is.null&select=id,notes`, {
+      method: 'PATCH', body: { notes }, prefer: 'return=representation'
+    });
+    return rows?.[0] || null;
   }
 
   async history(ownerHash) {
@@ -96,6 +110,18 @@ export class MemoryStore {
     return open || this.create(record);
   }
   async find(id, ownerHash) { const row = this.simulations.get(id); return row?.owner_hash === ownerHash ? row : null; }
+  async remove(id, ownerHash) {
+    if (!await this.find(id, ownerHash)) return false;
+    const descendants = new Set([id]);
+    let size;
+    do {
+      size = descendants.size;
+      for (const row of this.simulations.values()) if (descendants.has(row.source_simulation_id)) descendants.add(row.id);
+    } while (descendants.size !== size);
+    for (const descendant of descendants) this.simulations.delete(descendant);
+    return true;
+  }
   async finish(id, ownerHash, update) { const row = await this.find(id, ownerHash); if (!row) return null; if (!row.completed_at) Object.assign(row, update); return row; }
-  async history(ownerHash) { return [...this.simulations.values()].filter(row => row.owner_hash === ownerHash && row.completed_at).sort((a, b) => b.completed_at.localeCompare(a.completed_at)).slice(0, 500).map(({ questions, answers, owner_hash, ...summary }) => summary); }
+  async updateNotes(id, ownerHash, notes) { const row = await this.find(id, ownerHash); if (!row?.completed_at) return null; row.notes = notes; return { id, notes }; }
+  async history(ownerHash) { return [...this.simulations.values()].filter(row => row.owner_hash === ownerHash && row.completed_at).sort((a, b) => b.completed_at.localeCompare(a.completed_at)).slice(0, 500).map(({ questions, answers, notes, owner_hash, ...summary }) => summary); }
 }
